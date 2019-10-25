@@ -7,7 +7,7 @@ from ROOT import TFile, TTree, TVector3
 import numpy as np
 import os
 from glob import glob
-from helpScripts import createCellLists, po_3x3_cells_to_array, po_12x3_cells_to_array, eventTruthMatchedTOBs, getSeedCell
+from NewTauDefs import createCellLists, po_3x3_cells_to_array, po_12x3_cells_to_array, eventTruthMatchedTOBs, getSeedCell
 import sys
 import re
 
@@ -51,12 +51,14 @@ t_string = ROOT.TString("""
                         Events source: {} 
                         Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
                         Only files 000001 to 000019 are included
-                    
+                        
+                        Only the highest Et of each event is filled
+
                         Cuts:
                         TOB |Eta| < {}
-                        ppmIsMaxCore() = True
+                        ppmIsMaxCore(3.99) = True
 
-                        Git commit ID: b5e405823f66e9c1829ddb81bc666d673554354c
+                        Git commit ID: f90ef13817bf9b2013607bb9f7cf336dd513e7b2
                         """.format(sys.argv[0], f_loc, eta_cut))
 f_out.WriteObject(t_string, 'File Details')
 
@@ -90,7 +92,9 @@ t_out.Branch('Run2Et', run2_et, 'Run2Et/F')
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
     true_pt = np.array([0], dtype=np.float32)
+    reco_pt = np.array([0], dtype=np.float32)
     t_out.Branch('TrueTauPt', true_pt, 'TrueTauPt/F')
+    t_out.Branch('RecoTauPt', reco_pt, 'RecoTauPt/F')
 
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
@@ -103,6 +107,8 @@ for i, event in enumerate(t):
         tobList = eventTruthMatchedTOBs(event)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
+        recoPts = [entry[2] for entry in tobList]
+        recoEta = [entry[3] for entry in tobList]
     else:
         tobs = event.efex_AllTOBs
  
@@ -111,18 +117,34 @@ for i, event in enumerate(t):
     max_et_tob_num = None
     for tob_num, tob in enumerate(tobs):
         tob_counter += 1
-
-        # Cut on TOB eta
-        if abs(tob.eta()) > eta_cut:
+        
+        # 3.99 to be consistent with Josefina's code 
+        if not tob.ppmIsMaxCore(3.99):
             continue
 
-        if not tob.ppmIsMaxCore():
+        # For signal, fill all matched taus that survive eta and seed
+        if sigOrBack == 1:
+            # Cut on reco eta
+            if abs(recoEta[tob_num]) > eta_cut:
+                continue
+
+            run2_et[0] = tob.ppmTauClus()
+            true_pt[0] = truePts[tob_num] / 1000.
+            reco_pt[0] = recoPts[tob_num] / 1000.
+
+            t_out.Fill()
             continue
 
-        if tob.ppmTauClus() > event_max_et:
-            event_max_et = tob.ppmTauClus()
-            max_et_tob = tob
-            max_et_tob_num = tob_num
+        # For background, fill only highest-Et in event
+        else:
+            # Cut on TOB eta
+            if abs(tob.eta()) > eta_cut:
+                continue
+
+            if tob.ppmTauClus() > event_max_et:
+                event_max_et = tob.ppmTauClus()
+                max_et_tob = tob
+                max_et_tob_num = tob_num
 
     # Found no valid TOBs, so move to the next event
     if max_et_tob is None:
@@ -130,8 +152,7 @@ for i, event in enumerate(t):
 
     # Found at least one valid TOB, so write it
     run2_et[0] = event_max_et
-    true_pt[0] = truePts[max_et_tob_num] / 1000.
-
+    
     t_out.Fill()
 
     if t_out.GetEntries() % 1000 == 0:
