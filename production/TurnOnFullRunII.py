@@ -45,21 +45,38 @@ eta_cut = 2.3
 f_out = TFile(f_out_name, 'recreate')
 
 # Create description TString and store in TFile
-t_string = ROOT.TString("""
-                        Production script: {}
-                        Production script version: 1
-                        Events source: {} 
-                        Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
-                        Only files 000001 to 000019 are included
-                        
-                        Only the highest Et of each event is filled
+if sigOrBack == 0:
+    t_string = ROOT.TString("""
+                            Production script: {}
+                            Production script version: 1
+                            Events source: {} 
+                            Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
+                            Only files 000001 to 000019 are included
+                            
+                            Only the highest Et of each event is filled
+                            
+                            Cuts:
+                            TOB |Eta| < {}
+                            ppmIsMaxCore(3.99) = True
+    
+                            Git commit ID: 119a4a292a48519763b0d594e6df3478768f500d
+                            """.format(sys.argv[0], f_loc, eta_cut))
+elif sigOrBack == 1:
+    t_string = ROOT.TString("""
+                            Production script: {}
+                            Production script version: 1
+                            Events source: {} 
+                            Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
+    
+                            Truth-matching truth -> reco with dR = 0.3 and reco -> TOB with dR = 0.3
 
-                        Cuts:
-                        TOB |Eta| < {}
-                        ppmIsMaxCore(3.99) = True
+                            Cuts:
+                            Reco Tau |Eta| < {}
+                            ppmIsMaxCore(3.99) = True
+    
+                            Git commit ID: 119a4a292a48519763b0d594e6df3478768f500d
+                            """.format(sys.argv[0], f_loc, eta_cut))
 
-                        Git commit ID: f90ef13817bf9b2013607bb9f7cf336dd513e7b2
-                        """.format(sys.argv[0], f_loc, eta_cut))
 f_out.WriteObject(t_string, 'File Details')
 
 # Create output TTree
@@ -92,9 +109,14 @@ t_out.Branch('Run2Et', run2_et, 'Run2Et/F')
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
     true_pt = np.array([0], dtype=np.float32)
+    true_eta = np.array([0], dtype=np.float32)
     reco_pt = np.array([0], dtype=np.float32)
+    reco_eta = np.array([0], dtype=np.float32)
+    
     t_out.Branch('TrueTauPt', true_pt, 'TrueTauPt/F')
+    t_out.Branch('TrueTauEta', true_eta, 'TrueTauEta/F')
     t_out.Branch('RecoTauPt', reco_pt, 'RecoTauPt/F')
+    t_out.Branch('RecoTauEta', reco_eta, 'RecoTauEta/F')
 
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
@@ -107,8 +129,9 @@ for i, event in enumerate(t):
         tobList = eventTruthMatchedTOBs(event)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
-        recoPts = [entry[2] for entry in tobList]
-        recoEta = [entry[3] for entry in tobList]
+        trueEta = [entry[2] for entry in tobList]
+        recoPts = [entry[3] for entry in tobList]
+        recoEta = [entry[4] for entry in tobList]
     else:
         tobs = event.efex_AllTOBs
  
@@ -118,19 +141,20 @@ for i, event in enumerate(t):
     for tob_num, tob in enumerate(tobs):
         tob_counter += 1
         
-        # 3.99 to be consistent with Josefina's code 
-        if not tob.ppmIsMaxCore(3.99):
-            continue
-
         # For signal, fill all matched taus that survive eta and seed
         if sigOrBack == 1:
-            # Cut on reco eta
-            if abs(recoEta[tob_num]) > eta_cut:
+            # If not truth-matched cut on true tau eta
+            if tob == -1 and abs(trueEta[tob_num]) > eta_cut:
+                continue
+            # If truth-matched cut on reconstructed tau eta
+            if tob != -1 and abs(recoEta[tob_num]) > eta_cut:
                 continue
 
-            run2_et[0] = tob.ppmTauClus()
+            run2_et[0] = tob.ppmTauClus() if tob != -1 else -1
             true_pt[0] = truePts[tob_num] / 1000.
-            reco_pt[0] = recoPts[tob_num] / 1000.
+            true_eta[0] = trueEta[tob_num]
+            reco_pt[0] = recoPts[tob_num] / 1000. if recoPts != -1 else -1
+            reco_eta[0] = recoEta[tob_num]
 
             t_out.Fill()
             continue
@@ -139,6 +163,10 @@ for i, event in enumerate(t):
         else:
             # Cut on TOB eta
             if abs(tob.eta()) > eta_cut:
+                continue
+
+            # Only consider those that pass Run2 seed cut
+            if not tob.ppmIsMaxCore(3.99):
                 continue
 
             if tob.ppmTauClus() > event_max_et:
@@ -163,9 +191,3 @@ print 'TOBs written: ', t_out.GetEntries()
 
 f_out.Write()
 f_out.Close()
-
-
-
-
-
-
