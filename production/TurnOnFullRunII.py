@@ -41,6 +41,7 @@ print 'Total entries: ',entries
 
 eta_cut = 2.4
 max_core_et = 3.99
+git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -60,8 +61,8 @@ if sigOrBack == 0:
                             TOB |Eta| < {}
                             ppmIsMaxCore({}) = True
     
-                            Git commit ID: 1bfcb9a158d506bcd65e637e63b134ab9d54c8fc
-                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et))
+                            Git commit ID: {}
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, git_commit_id))
 elif sigOrBack == 1:
     t_string = ROOT.TString("""
                             Production script: {}
@@ -76,8 +77,8 @@ elif sigOrBack == 1:
                             Reco Tau |Eta| < {} (applied to recos after matching to truth)
                             ppmIsMaxCore({}) = True (applied to TOBs before matching)
     
-                            Git commit ID: 1bfcb9a158d506bcd65e637e63b134ab9d54c8fc
-                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et))
+                            Git commit ID: {} 
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, git_commit_id))
 
 f_out.WriteObject(t_string, 'File Details')
 
