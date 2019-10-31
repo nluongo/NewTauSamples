@@ -39,7 +39,8 @@ for f_name in f_list:
 entries = t.GetEntries()
 print 'Total entries: ',entries
 
-eta_cut = 2.3
+eta_cut = 2.4
+max_core_et = 3.99
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -57,10 +58,10 @@ if sigOrBack == 0:
                             
                             Cuts:
                             TOB |Eta| < {}
-                            ppmIsMaxCore(3.99) = True
+                            ppmIsMaxCore({}) = True
     
-                            Git commit ID: 119a4a292a48519763b0d594e6df3478768f500d
-                            """.format(sys.argv[0], f_loc, eta_cut))
+                            Git commit ID: 1bfcb9a158d506bcd65e637e63b134ab9d54c8fc
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et))
 elif sigOrBack == 1:
     t_string = ROOT.TString("""
                             Production script: {}
@@ -69,13 +70,14 @@ elif sigOrBack == 1:
                             Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
     
                             Truth-matching truth -> reco with dR = 0.3 and reco -> TOB with dR = 0.3
+                            Truth that do not find a match in reco are filtered out
 
                             Cuts:
-                            Reco Tau |Eta| < {}
-                            ppmIsMaxCore(3.99) = True
+                            Reco Tau |Eta| < {} (applied to recos after matching to truth)
+                            ppmIsMaxCore({}) = True (applied to TOBs before matching)
     
-                            Git commit ID: 119a4a292a48519763b0d594e6df3478768f500d
-                            """.format(sys.argv[0], f_loc, eta_cut))
+                            Git commit ID: 1bfcb9a158d506bcd65e637e63b134ab9d54c8fc
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et))
 
 f_out.WriteObject(t_string, 'File Details')
 
@@ -143,11 +145,12 @@ for i, event in enumerate(t):
         
         # For signal, fill all matched taus that survive eta and seed
         if sigOrBack == 1:
-            # If not truth-matched cut on true tau eta
-            if tob == -1 and abs(trueEta[tob_num]) > eta_cut:
+            # If truth didn't match to reco then throw it away
+            if recoPts[tob_num] == -1:
                 continue
-            # If truth-matched cut on reconstructed tau eta
-            if tob != -1 and abs(recoEta[tob_num]) > eta_cut:
+
+            # If we do find one, then apply cut on reco tau eta
+            if abs(recoEta[tob_num]) > eta_cut:
                 continue
 
             run2_et[0] = tob.ppmTauClus() if tob != -1 else -1
@@ -166,7 +169,7 @@ for i, event in enumerate(t):
                 continue
 
             # Only consider those that pass Run2 seed cut
-            if not tob.ppmIsMaxCore(3.99):
+            if not tob.ppmIsMaxCore(max_core_et):
                 continue
 
             if tob.ppmTauClus() > event_max_et:
