@@ -39,9 +39,9 @@ for f_name in f_list:
 entries = t.GetEntries()
 print 'Total entries: ',entries
 
-eta_cut = 2.4
+eta_cut = 2.3
 max_core_et = 3.99
-git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
+git_commit_id = '5b39e6eb3ca81b4abccfeecd302e4312365a68b9'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -86,28 +86,10 @@ f_out.WriteObject(t_string, 'File Details')
 t_out = TTree('mytree', 'Full event file')
 
 # Initialize variables to be written to tree
-#l0_cells = np.array([0]*9, dtype=np.float32)
-#l1_cells = np.array([0]*36, dtype=np.float32)
-#l2_cells = np.array([0]*36, dtype=np.float32)
-#l3_cells = np.array([0]*9, dtype=np.float32)
-#had_cells = np.array([0]*9, dtype=np.float32)
-#tob_eta = np.array([0], dtype=np.float32)
-#tob_phi = np.array([0], dtype=np.float32)
 run2_et = np.array([0], dtype=np.float32)
-#seed_eta = np.array([0], dtype=np.int32)
-#seed_phi = np.array([0], dtype=np.int32)
 
 # Connect variables to branches in output tree
-#t_out.Branch('L0CellEt', l0_cells, 'L0CellEt[9]/F')
-#t_out.Branch('L1CellEt', l1_cells, 'L1CellEt[36]/F')
-#t_out.Branch('L2CellEt', l2_cells, 'L2CellEt[36]/F')
-#t_out.Branch('L3CellEt', l3_cells, 'L3CellEt[9]/F')
-#t_out.Branch('HadCellEt', had_cells, 'HadCellEt[9]/F')
-#t_out.Branch('TOBEta', tob_eta, 'TOBEta/F')
-#t_out.Branch('TOBPhi', tob_phi, 'TOBPhi/F')
 t_out.Branch('Run2Et', run2_et, 'Run2Et/F')
-#t_out.Branch('SeedEta', seed_eta, 'SeedEta/I')
-#t_out.Branch('SeedPhi', seed_phi, 'SeedPhi/I')
 
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
@@ -125,8 +107,10 @@ if sigOrBack == 1:
 tob_counter = 0
 event_break = 0
 for i, event in enumerate(t):
-    if event_break == 1:
-        break
+    tob_counter += 1
+    
+    if event.distanceFromFrontOfTrain < 20:
+        continue
 
     if sigOrBack == 1:
         tobList = eventTruthMatchedTOBs(event)
@@ -135,6 +119,7 @@ for i, event in enumerate(t):
         trueEta = [entry[2] for entry in tobList]
         recoPts = [entry[3] for entry in tobList]
         recoEta = [entry[4] for entry in tobList]
+
     else:
         tobs = event.efex_AllTOBs
  
@@ -142,7 +127,6 @@ for i, event in enumerate(t):
     max_et_tob = None
     max_et_tob_num = None
     for tob_num, tob in enumerate(tobs):
-        tob_counter += 1
         
         # For signal, fill all matched taus that survive eta and seed
         if sigOrBack == 1:
@@ -154,6 +138,9 @@ for i, event in enumerate(t):
             if abs(recoEta[tob_num]) > eta_cut:
                 continue
 
+            if recoPts[tob_num] < 5000.:
+                continue
+
             run2_et[0] = tob.ppmTauClus() if tob != -1 else -1
             true_pt[0] = truePts[tob_num] / 1000.
             true_eta[0] = trueEta[tob_num]
@@ -163,11 +150,11 @@ for i, event in enumerate(t):
             t_out.Fill()
             continue
 
-        # For background, fill only highest-Et in event
+        # For background, fill only highest-Et in event and no eta cut because we care about overall rate
         else:
             # Cut on TOB eta
-            if abs(tob.eta()) > eta_cut:
-                continue
+            #if abs(tob.eta()) > eta_cut:
+            #    continue
 
             # Only consider those that pass Run2 seed cut
             if not tob.ppmIsMaxCore(max_core_et):
