@@ -52,7 +52,7 @@ t.reco_et_shift = 0
 my_tree = ROOTClassDefs.Tree(t)
 
 eta_cut = 2.3
-seed_et_cut = 1
+train_max = 20
 git_commit_id = 'dad39d542e01ec6cc0dd6de0bdb7db8b2684bb9b'
 
 # Create TFile
@@ -71,9 +71,10 @@ if sigOrBack == 0:
 
                             Cuts:
                             TOB |Eta| < {}
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {} 
-                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, train_max, git_commit_id))
 elif sigOrBack == 1:
     t_string = ROOT.TString("""
                             Production script: {}
@@ -86,26 +87,19 @@ elif sigOrBack == 1:
 
                             Cuts:
                             Reco Tau |Eta| < {} (applied to recos after matching to truth)
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {} 
-                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, train_max, git_commit_id))
 
 # Create output TTree
 t_out = TTree('mytree', 'Full event file')
 
 # Initialize variables to be written to tree
-#tob_eta = np.array([0], dtype=np.float32)
-#tob_phi = np.array([0], dtype=np.float32)
 bigcluster_et = np.array([0], dtype=np.float32)
-#seed_eta = np.array([0], dtype=np.int32)
-#seed_phi = np.array([0], dtype=np.int32)
 
 # Connect variables to branches in output tree
-#t_out.Branch('TOBEta', tob_eta, 'TOBEta/F')
-#t_out.Branch('TOBPhi', tob_phi, 'TOBPhi/F')
 t_out.Branch('BigClusterEt', bigcluster_et, 'BigClusterEt/F')
-#t_out.Branch('SeedEta', seed_eta, 'SeedEta/I')
-#t_out.Branch('SeedPhi', seed_phi, 'SeedPhi/I')
 
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
@@ -122,7 +116,7 @@ if sigOrBack == 1:
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
 for i, event in enumerate(t):
-    if event.distanceFromFrontOfTrain < 20:
+    if event.distanceFromFrontOfTrain < train_max:
         continue
 
     if sigOrBack == 1:
