@@ -9,7 +9,7 @@ from ROOTDefs import resize_root_layer_to_array
 import numpy as np
 import os
 from glob import glob
-from helpScripts import createCellLists, po_3x3_cells_to_array, po_12x3_cells_to_array, eventTruthMatchedTOBs, getSeedCell
+from NewTauDefs import createCellLists, po_3x3_cells_to_array, po_12x3_cells_to_array, eventTruthMatchedTOBs, getSeedCell, event_from_tob, isCentralTowerSeed
 import sys
 import re
 
@@ -49,71 +49,83 @@ t.reco_et_layer_weights = [1, 1, 1, 1, 1]
 #t.reco_et_layer_weights = [1, 1, 1.6, 1.6, 1.4]
 t.reco_et_shift = 0
 
+my_tree = ROOTClassDefs.Tree(t)
+
 eta_cut = 2.3
 seed_et_cut = 1
+git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
 
 # Create description TString and store in TFile
-t_string = ROOT.TString("""
-                        Production script: {}
-                        Production script version: 1
-                        Events source: {} 
-                        Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
-                        Only files 000001 to 000019 are included
-                    
-                        Cuts:
-                        TOB |Eta| < {}
-                        L2 Seed Cell Et > {} GeV
+if sigOrBack == 0:
+    t_string = ROOT.TString("""
+                            Production script: {}
+                            Production script version: 1
+                            Events source: {} 
+                            Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
+                            Only files 000001 to 000019 are included
+                            
+                            Only the highest Et of each event is filled
 
-                        Layer Weights:
-                        L0+L1: 1
-                        L2+L3: 1
-                        Had: 1
-                        Git commit ID: b5e405823f66e9c1829ddb81bc666d673554354c
-                        """.format(sys.argv[0], f_loc, eta_cut, seed_et_cut))
+                            Cuts:
+                            TOB |Eta| < {}
+    
+                            Git commit ID: {} 
+                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+elif sigOrBack == 1:
+    t_string = ROOT.TString("""
+                            Production script: {}
+                            Production script version: 1
+                            Events source: {} 
+                            Source production script: https://gitlab.cern.ch/will/L1CaloUpgrade
+    
+                            Truth-matching truth -> reco with dR = 0.3 and reco -> TOB with dR = 0.3
+                            Truth that do not find a match in reco are filtered out
+
+                            Cuts:
+                            Reco Tau |Eta| < {} (applied to recos after matching to truth)
+    
+                            Git commit ID: {} 
+                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+
 f_out.WriteObject(t_string, 'File Details')
 
 # Create output TTree
 t_out = TTree('mytree', 'Full event file')
 
 # Initialize variables to be written to tree
-l0_cells = np.array([0]*9, dtype=np.float32)
-l1_cells = np.array([0]*36, dtype=np.float32)
-l2_cells = np.array([0]*36, dtype=np.float32)
-l3_cells = np.array([0]*9, dtype=np.float32)
-had_cells = np.array([0]*9, dtype=np.float32)
-#tob_eta = np.array([0], dtype=np.float32)
-#tob_phi = np.array([0], dtype=np.float32)
 run3_et = np.array([0], dtype=np.float32)
-#seed_eta = np.array([0], dtype=np.int32)
-#seed_phi = np.array([0], dtype=np.int32)
 
 # Connect variables to branches in output tree
-#t_out.Branch('L0CellEt', l0_cells, 'L0CellEt[9]/F')
-#t_out.Branch('L1CellEt', l1_cells, 'L1CellEt[36]/F')
-#t_out.Branch('L2CellEt', l2_cells, 'L2CellEt[36]/F')
-#t_out.Branch('L3CellEt', l3_cells, 'L3CellEt[9]/F')
-#t_out.Branch('HadCellEt', had_cells, 'HadCellEt[9]/F')
-#t_out.Branch('TOBEta', tob_eta, 'TOBEta/F')
-#t_out.Branch('TOBPhi', tob_phi, 'TOBPhi/F')
 t_out.Branch('Run3Et', run3_et, 'Run3Et/F')
-#t_out.Branch('SeedEta', seed_eta, 'SeedEta/I')
-#t_out.Branch('SeedPhi', seed_phi, 'SeedPhi/I')
 
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
     true_pt = np.array([0], dtype=np.float32)
+    true_eta = np.array([0], dtype=np.float32)
+    reco_pt = np.array([0], dtype=np.float32)
+    reco_eta = np.array([0], dtype=np.float32)
+    
     t_out.Branch('TrueTauPt', true_pt, 'TrueTauPt/F')
+    t_out.Branch('TrueTauEta', true_eta, 'TrueTauEta/F')
+    t_out.Branch('RecoTauPt', reco_pt, 'RecoTauPt/F')
+    t_out.Branch('RecoTauEta', reco_eta, 'RecoTauEta/F')
 
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
 for i, event in enumerate(t):
+    if event.distanceFromFrontOfTrain < 20:
+        continue
+
     if sigOrBack == 1:
-        tobList = eventTruthMatchedTOBs(event)
+        tobList = eventTruthMatchedTOBs(event, my_tree)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
+        trueEta = [entry[2] for entry in tobList]
+        recoPts = [entry[3] for entry in tobList]
+        recoEta = [entry[4] for entry in tobList]
     else:
         tobs = event.efex_AllTOBs
  
@@ -122,53 +134,49 @@ for i, event in enumerate(t):
     max_et_tob_num = None
     for tob_num, tob in enumerate(tobs):
         tob_counter += 1
-
-        # Cut on TOB eta
-        if abs(tob.eta()) > eta_cut:
-            continue
-
-        # Format cells Ets in nTuple-friendly way
-        cells = createCellLists(tob)
-
-        po_3x3_cells_to_array(l0_cells, cells[0])
-        po_12x3_cells_to_array(l1_cells, cells[1])
-        po_12x3_cells_to_array(l2_cells, cells[2])
-        po_3x3_cells_to_array(l3_cells, cells[3])
-        po_3x3_cells_to_array(had_cells, cells[4])
-
-        l0_array = resize_root_layer_to_array(l0_cells, 3, 3)
-        l1_array = resize_root_layer_to_array(l1_cells, 12, 3)
-        l2_array = resize_root_layer_to_array(l2_cells, 12, 3)
-        l3_array = resize_root_layer_to_array(l3_cells, 3, 3)
-        had_array = resize_root_layer_to_array(had_cells, 3, 3)
-
-        l0_layer = ROOTClassDefs.Layer(l0_array, 3, 3, 0)
-        l1_layer = ROOTClassDefs.Layer(l1_array, 12, 3, 1)
-        l2_layer = ROOTClassDefs.Layer(l2_array, 12, 3, 2)
-        l3_layer = ROOTClassDefs.Layer(l3_array, 3, 3, 3)
-        had_layer = ROOTClassDefs.Layer(had_array, 3, 3, 4)
-
-        event = ROOTClassDefs.Event(t, l0_layer, l1_layer, l2_layer, l3_layer, had_layer, 0, 1, 0)
-
-        # Find seed cell
-        found_seed_eta, found_seed_phi = getSeedCell(event.l2_layer.cell_et)
-
-        # If no seed is found then go to next TOB
-        if found_seed_eta is None:
-            continue
-
-        # If valid seed found, set it in the Event which recalculate seed_et and reco_et
-        event.set_seed_position(found_seed_eta, found_seed_phi)
         
-        # Cut on seed Et
-        seed_et = event.l2_layer.cell_et[found_seed_eta][found_seed_phi]
-        if seed_et < seed_et_cut:
+        # For signal, fill all matched taus that survive eta and seed
+        if sigOrBack == 1:
+            # If truth didn't match to reco then throw it away
+            if recoPts[tob_num] == -1:
+                continue
+
+            # If we do find one, then apply cut on reco tau eta
+            if abs(recoEta[tob_num]) > eta_cut:
+                continue
+            
+            if tob != -1:
+                cells = createCellLists(tob)
+                
+                tob_event = event_from_tob(my_tree, tob)
+                run3_et[0] = tob_event.reco_et
+            else:
+                run3_et[0] = -1
+            
+            true_pt[0] = truePts[tob_num] / 1000.
+            true_eta[0] = trueEta[tob_num]
+            reco_pt[0] = recoPts[tob_num] / 1000. if recoPts != -1 else -1
+            reco_eta[0] = recoEta[tob_num]
+
+            t_out.Fill()
             continue
 
-        if event.reco_et > event_max_et:
-            event_max_et = event.reco_et
-            max_et_tob = tob
-            max_et_tob_num = tob_num
+        # For background, fill only highest-Et in event and no eta cut because we care about overall rate
+        else:
+            tob_event = event_from_tob(my_tree, tob)
+            
+            # Cut on TOB eta
+            #if abs(tob.eta()) > eta_cut:
+            #    continue
+
+            # Only consider those that pass Run3 seed cut
+            if not isCentralTowerSeed(tob_event):
+                continue
+
+            if tob_event.reco_et > event_max_et:
+                event_max_et = tob_event.reco_et
+                max_et_tob = tob
+                max_et_tob_num = tob_num
 
     # Found no valid TOBs, so move to the next event
     if max_et_tob is None:
@@ -176,8 +184,6 @@ for i, event in enumerate(t):
 
     # Found at least one valid TOB, so write it
     run3_et[0] = event_max_et    
-    if sigOrBack == 1:
-        true_pt[0] = truePts[max_et_tob_num] / 1000.
 
     t_out.Fill()
 
