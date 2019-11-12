@@ -52,7 +52,7 @@ t.reco_et_shift = 0
 my_tree = ROOTClassDefs.Tree(t)
 
 eta_cut = 2.3
-seed_et_cut = 1
+train_max = 20
 git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
 
 # Create TFile
@@ -71,9 +71,10 @@ if sigOrBack == 0:
 
                             Cuts:
                             TOB |Eta| < {}
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {} 
-                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, train_max, git_commit_id))
 elif sigOrBack == 1:
     t_string = ROOT.TString("""
                             Production script: {}
@@ -86,9 +87,10 @@ elif sigOrBack == 1:
 
                             Cuts:
                             Reco Tau |Eta| < {} (applied to recos after matching to truth)
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {} 
-                            """.format(sys.argv[0], f_loc, eta_cut, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, train_max, git_commit_id))
 
 f_out.WriteObject(t_string, 'File Details')
 
@@ -116,7 +118,7 @@ if sigOrBack == 1:
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
 for i, event in enumerate(t):
-    if event.distanceFromFrontOfTrain < 20:
+    if event.distanceFromFrontOfTrain < train_max:
         continue
 
     if sigOrBack == 1:
