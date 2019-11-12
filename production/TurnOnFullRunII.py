@@ -40,6 +40,7 @@ entries = t.GetEntries()
 print 'Total entries: ',entries
 
 eta_cut = 2.3
+train_max = 20
 max_core_et = 3.99
 git_commit_id = '5b39e6eb3ca81b4abccfeecd302e4312365a68b9'
 
@@ -60,9 +61,10 @@ if sigOrBack == 0:
                             Cuts:
                             TOB |Eta| < {}
                             ppmIsMaxCore({}) = True
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {}
-                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, train_max, git_commit_id))
 elif sigOrBack == 1:
     t_string = ROOT.TString("""
                             Production script: {}
@@ -76,9 +78,10 @@ elif sigOrBack == 1:
                             Cuts:
                             Reco Tau |Eta| < {} (applied to recos after matching to truth)
                             ppmIsMaxCore({}) = True (applied to TOBs before matching)
-    
+                            distanceFromFrontOfTrain < {}
+
                             Git commit ID: {} 
-                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, git_commit_id))
+                            """.format(sys.argv[0], f_loc, eta_cut, max_core_et, train_max, git_commit_id))
 
 f_out.WriteObject(t_string, 'File Details')
 
@@ -109,7 +112,7 @@ event_break = 0
 for i, event in enumerate(t):
     tob_counter += 1
     
-    if event.distanceFromFrontOfTrain < 20:
+    if event.distanceFromFrontOfTrain < train_max:
         continue
 
     if sigOrBack == 1:
