@@ -4,6 +4,7 @@
 
 import ROOT
 from ROOT import TFile, TTree, TVector3
+import ROOTClassDefs
 import numpy as np
 import os
 from glob import glob
@@ -12,13 +13,13 @@ import sys
 import re
 
 # Read in parameter denoting whether to run on signal or background
-sigOrBack = int(sys.argv[1])
+sig_or_back = int(sys.argv[1])
 
 # Define location of source samples and define output file based on signal or background flag
-if sigOrBack == 1:
+if sig_or_back == 1:
     f_loc = '/afs/cern.ch/work/b/barak/public/L1CALO/phase1/user.viveiros.ZtautauNtuple.NTUP_r9700_ALLTOB/user.viveiros.15574121.ALLTOB._*.root'
     f_out_name = 'sig_ntuple_turnonrunII.root'
-elif sigOrBack == 0:
+elif sig_or_back == 0:
     f_loc = '/afs/cern.ch/work/b/barak/public/L1CALO/phase1/user.viveiros.JZ0WNtuple.NTUP_r9700_ALLTOB/user.viveiros.15574138.ALLTOB._*.root' 
     f_out_name = 'back_ntuple_turnonrunII.root'
 else:
@@ -27,7 +28,7 @@ else:
 
 # Get files and take subset if looking at background  and add them to TChain to be read together
 f_list = glob(f_loc)
-if sigOrBack == 0:
+if sig_or_back == 0:
     f_list = [ f_name for f_name in f_list if re.search("0000[0-1][0-9]",f_name) is not None]
 
 print 'Files included: ',len(f_list)
@@ -39,16 +40,25 @@ for f_name in f_list:
 entries = t.GetEntries()
 print 'Total entries: ',entries
 
+t.seed_region_def = [[4, 7], [1, 1]]
+t.adjacent_eta_cells = { 4: -1, 5: 0, 6: 0, 7: 1 }
+t.reco_et_def = [[1, 2], [5, 2], [5, 2], [3, 2], [3, 2]]
+t.fcore_def = [[3, 2], [12, 3]]
+t.reco_et_layer_weights = [1, 1, 1, 1, 1]
+t.reco_et_shift = 0
+
+my_tree = ROOTClassDefs.Tree(t)
+
 eta_cut = 2.3
 train_max = 20
 max_core_et = 3.99
-git_commit_id = '5b39e6eb3ca81b4abccfeecd302e4312365a68b9'
+git_commit_id = 'fc8576ad416386e50ea25e3fb9cd7714ae12b3c'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
 
 # Create description TString and store in TFile
-if sigOrBack == 0:
+if sig_or_back == 0:
     t_string = ROOT.TString("""
                             Production script: {}
                             Production script version: 1
@@ -65,7 +75,7 @@ if sigOrBack == 0:
 
                             Git commit ID: {}
                             """.format(sys.argv[0], f_loc, eta_cut, max_core_et, train_max, git_commit_id))
-elif sigOrBack == 1:
+elif sig_or_back == 1:
     t_string = ROOT.TString("""
                             Production script: {}
                             Production script version: 1
@@ -90,12 +100,14 @@ t_out = TTree('mytree', 'Full event file')
 
 # Initialize variables to be written to tree
 run2_et = np.array([0], dtype=np.float32)
+run2_iso = np.array([0], dtype=np.float32)
 
 # Connect variables to branches in output tree
 t_out.Branch('Run2Et', run2_et, 'Run2Et/F')
+t_out.Branch('Run2Iso', run2_iso, 'Run2Iso/F')
 
 # Define signal-specific variables based on signal/background flag
-if sigOrBack == 1:
+if sig_or_back == 1:
     true_pt = np.array([0], dtype=np.float32)
     true_eta = np.array([0], dtype=np.float32)
     reco_pt = np.array([0], dtype=np.float32)
@@ -115,8 +127,8 @@ for i, event in enumerate(t):
     if event.distanceFromFrontOfTrain < train_max:
         continue
 
-    if sigOrBack == 1:
-        tobList = eventTruthMatchedTOBs(event)
+    if sig_or_back == 1:
+        tobList = eventTruthMatchedTOBs(event, 'Run2', my_tree)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
         trueEta = [entry[2] for entry in tobList]
@@ -132,7 +144,7 @@ for i, event in enumerate(t):
     for tob_num, tob in enumerate(tobs):
         
         # For signal, fill all matched taus that survive eta and seed
-        if sigOrBack == 1:
+        if sig_or_back == 1:
             # If truth didn't match to reco then throw it away
             if recoPts[tob_num] == -1:
                 continue
@@ -145,20 +157,21 @@ for i, event in enumerate(t):
                 continue
 
             run2_et[0] = tob.ppmTauClus() if tob != -1 else -1
+            run2_iso[0] = tob.ppmEMIsol() if tob != -1 else -1    
             true_pt[0] = truePts[tob_num] / 1000.
             true_eta[0] = trueEta[tob_num]
             reco_pt[0] = recoPts[tob_num] / 1000. if recoPts != -1 else -1
             reco_eta[0] = recoEta[tob_num]
 
             t_out.Fill()
+
+            if t_out.GetEntries() % 1000 == 0:
+                print 'Entries filled: ',t_out.GetEntries()
+            
             continue
 
         # For background, fill only highest-Et in event and no eta cut because we care about overall rate
         else:
-            # Cut on TOB eta
-            #if abs(tob.eta()) > eta_cut:
-            #    continue
-
             # Only consider those that pass Run2 seed cut
             if not tob.ppmIsMaxCore(max_core_et):
                 continue
@@ -174,6 +187,7 @@ for i, event in enumerate(t):
 
     # Found at least one valid TOB, so write it
     run2_et[0] = event_max_et
+    run2_iso[0] = max_et_tob.ppmEMIsol()    
     
     t_out.Fill()
 
