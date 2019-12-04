@@ -53,7 +53,7 @@ my_tree = ROOTClassDefs.Tree(t)
 
 eta_cut = 2.3
 train_max = 20
-git_commit_id = 'dad39d542e01ec6cc0dd6de0bdb7db8b2684bb9b'
+git_commit_id = '07274d3b20022278090273b57f860faff758fd26'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -152,6 +152,10 @@ for i, event in enumerate(t):
             reco_eta[0] = recoEta[tob_num]
 
             t_out.Fill()
+            
+            if t_out.GetEntries() % 1000 == 0:
+                print 'Entries filled: ',t_out.GetEntries()
+    
             continue
 
         # For background, fill only highest-Et in event
