@@ -120,7 +120,7 @@ for i, event in enumerate(t):
         continue
 
     if sigOrBack == 1:
-        tobList = eventTruthMatchedTOBs(event, my_tree)
+        tobList = eventTruthMatchedTOBs(event, 'Run3', my_tree)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
         trueEta = [entry[2] for entry in tobList]
