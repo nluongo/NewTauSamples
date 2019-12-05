@@ -3,16 +3,15 @@
 ##############
 
 import ROOT
+import ROOTClassDefs
 from ROOT import TFile, TTree, TVector3
 from ROOTDefs import resize_root_layer_to_array
-import ROOTClassDefs
 import numpy as np
 import os
 from glob import glob
 from NewTauDefs import createCellLists, po_3x3_cells_to_array, po_12x3_cells_to_array, eventTruthMatchedTOBs, getSeedCell, event_from_tob, isCentralTowerSeed
 import sys
 import re
-from myHelpers_New import bigCluster
 
 # Read in parameter denoting whether to run on signal or background
 sigOrBack = int(sys.argv[1])
@@ -20,10 +19,10 @@ sigOrBack = int(sys.argv[1])
 # Define location of source samples and define output file based on signal or background flag
 if sigOrBack == 1:
     f_loc = '/afs/cern.ch/work/b/barak/public/L1CALO/phase1/user.viveiros.ZtautauNtuple.NTUP_r9700_ALLTOB/user.viveiros.15574121.ALLTOB._*.root'
-    f_out_name = 'sig_ntuple_turnonbigcluster.root'
+    f_out_name = 'sig_cells_runIII.root'
 elif sigOrBack == 0:
     f_loc = '/afs/cern.ch/work/b/barak/public/L1CALO/phase1/user.viveiros.JZ0WNtuple.NTUP_r9700_ALLTOB/user.viveiros.15574138.ALLTOB._*.root' 
-    f_out_name = 'back_ntuple_turnonbigcluster.root'
+    f_out_name = 'back_cells_runIII.root'
 else:
     print 'Must provide argument'
     exit()
@@ -53,7 +52,7 @@ my_tree = ROOTClassDefs.Tree(t)
 
 eta_cut = 2.3
 train_max = 20
-git_commit_id = '07274d3b20022278090273b57f860faff758fd26'
+git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -92,14 +91,28 @@ elif sigOrBack == 1:
                             Git commit ID: {} 
                             """.format(sys.argv[0], f_loc, eta_cut, train_max, git_commit_id))
 
+f_out.WriteObject(t_string, 'File Details')
+
 # Create output TTree
 t_out = TTree('mytree', 'Full event file')
 
 # Initialize variables to be written to tree
-bigcluster_et = np.array([0], dtype=np.float32)
+run3_et = np.array([0], dtype=np.float32)
+l0_cells = np.array([0]*9, dtype=np.float32)
+l1_cells = np.array([0]*36, dtype=np.float32)
+l2_cells = np.array([0]*36, dtype=np.float32)
+l3_cells = np.array([0]*9, dtype=np.float32)
+had_cells = np.array([0]*9, dtype=np.float32)
+tob_eta = np.array([0]*9, dtype=np.float32)
 
 # Connect variables to branches in output tree
-t_out.Branch('BigClusterEt', bigcluster_et, 'BigClusterEt/F')
+t_out.Branch('Run3Et', run3_et, 'Run3Et/F')
+t_out.Branch('L0CellEt', l0_cells, 'L0CellEt[9]/F')
+t_out.Branch('L1CellEt', l1_cells, 'L1CellEt[36]/F')
+t_out.Branch('L2CellEt', l2_cells, 'L2CellEt[36]/F')
+t_out.Branch('L3CellEt', l3_cells, 'L3CellEt[9]/F')
+t_out.Branch('HadCellEt', had_cells, 'HadCellEt[9]/F')
+t_out.Branch('TOBEta', tob_eta, 'TOBEta/F')
 
 # Define signal-specific variables based on signal/background flag
 if sigOrBack == 1:
@@ -111,7 +124,7 @@ if sigOrBack == 1:
     t_out.Branch('TrueTauPt', true_pt, 'TrueTauPt/F')
     t_out.Branch('TrueTauEta', true_eta, 'TrueTauEta/F')
     t_out.Branch('RecoTauPt', reco_pt, 'RecoTauPt/F')
-    t_out.Branch('TrueTauPt', true_pt, 'TrueTauPt/F')
+    t_out.Branch('RecoTauEta', reco_eta, 'RecoTauEta/F')
 
 # Loop over source events and load those that pass cuts into output file
 tob_counter = 0
@@ -134,45 +147,57 @@ for i, event in enumerate(t):
     max_et_tob_num = None
     for tob_num, tob in enumerate(tobs):
         tob_counter += 1
-
-        #For signal, fill all matched taus that survive eta and seed
+        
+        # For signal, fill all matched taus that survive eta and seed
         if sigOrBack == 1:
             # If truth didn't match to reco then throw it away
             if recoPts[tob_num] == -1:
                 continue
 
-            # If we do find one, then apply cut to reco tau eta
+            # If we do find one, then apply cut on reco tau eta
             if abs(recoEta[tob_num]) > eta_cut:
                 continue
-
-            bigcluster_et[0] = bigCluster(tob)[0] if tob != -1 else -1
+            
+            if tob != -1:
+                cells = createCellLists(tob)
+                po_3x3_cells_to_array(l0_cells, cells[0])
+                po_12x3_cells_to_array(l1_cells, cells[1])
+                po_12x3_cells_to_array(l2_cells, cells[2])
+                po_3x3_cells_to_array(l3_cells, cells[3])
+                po_3x3_cells_to_array(had_cells, cells[4])
+                
+                tob_event = event_from_tob(my_tree, tob)
+                run3_et[0] = tob_event.reco_et
+            else:
+                run3_et[0] = -1
+                po_3x3_cells_to_array(l0_cells, [-1] * 9)
+                po_12x3_cells_to_array(l1_cells, [-1] * 36)
+                po_12x3_cells_to_array(l2_cells,  [-1] * 36)
+                po_3x3_cells_to_array(l3_cells, [-1] * 9)
+                po_3x3_cells_to_array(had_cells, [-1] * 9)
+            
             true_pt[0] = truePts[tob_num] / 1000.
             true_eta[0] = trueEta[tob_num]
             reco_pt[0] = recoPts[tob_num] / 1000. if recoPts != -1 else -1
             reco_eta[0] = recoEta[tob_num]
 
             t_out.Fill()
-            
+    
             if t_out.GetEntries() % 1000 == 0:
                 print 'Entries filled: ',t_out.GetEntries()
     
             continue
 
-        # For background, fill only highest-Et in event
+        # For background, fill only highest-Et in event and no eta cut because we care about overall rate
         else:
             tob_event = event_from_tob(my_tree, tob)
-
-            # Cut on TOB eta
-            #if abs(tob.eta()) > eta_cut:
-            #    continue
-
+            
+            # Only consider those that pass Run3 seed cut
             if not isCentralTowerSeed(tob_event):
                 continue
 
-            event_et = bigCluster(tob)[0]
-
-            if event_et > event_max_et:
-                event_max_et = event_et
+            if tob_event.reco_et > event_max_et:
+                event_max_et = tob_event.reco_et
                 max_et_tob = tob
                 max_et_tob_num = tob_num
 
@@ -181,7 +206,17 @@ for i, event in enumerate(t):
         continue
 
     # Found at least one valid TOB, so write it
-    bigcluster_et[0] = event_max_et
+    run3_et[0] = event_max_et    
+    
+    cells = createCellLists(max_et_tob)
+    po_3x3_cells_to_array(l0_cells, cells[0])
+    po_12x3_cells_to_array(l1_cells, cells[1])
+    po_12x3_cells_to_array(l2_cells, cells[2])
+    po_3x3_cells_to_array(l3_cells, cells[3])
+    po_3x3_cells_to_array(had_cells, cells[4])
+
+    # Include TOB eta information because we need to restrict for ROC curves but not for rate calculations
+    tob_eta[0] = max_et_tob.eta()
 
     t_out.Fill()
 
@@ -193,9 +228,4 @@ print 'TOBs written: ', t_out.GetEntries()
 
 f_out.Write()
 f_out.Close()
-
-
-
-
-
 
