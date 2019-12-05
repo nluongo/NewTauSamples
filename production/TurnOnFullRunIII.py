@@ -53,7 +53,7 @@ my_tree = ROOTClassDefs.Tree(t)
 
 eta_cut = 2.3
 train_max = 20
-git_commit_id = '1bfcb9a158d506bcd65e637e63b134ab9d54c8fc'
+git_commit_id ='d93786e872198549ba5985ee8e495b4958a1be41'
 
 # Create TFile
 f_out = TFile(f_out_name, 'recreate')
@@ -122,7 +122,7 @@ for i, event in enumerate(t):
         continue
 
     if sigOrBack == 1:
-        tobList = eventTruthMatchedTOBs(event, my_tree)
+        tobList = eventTruthMatchedTOBs(event, 'Run3', my_tree)
         tobs = [entry[0] for entry in tobList]
         truePts = [entry[1] for entry in tobList]
         trueEta = [entry[2] for entry in tobList]
@@ -161,15 +161,15 @@ for i, event in enumerate(t):
             reco_eta[0] = recoEta[tob_num]
 
             t_out.Fill()
+
+            if t_out.GetEntries() % 1000 == 0:
+                print 'Entries filled: ',t_out.GetEntries()
+            
             continue
 
         # For background, fill only highest-Et in event and no eta cut because we care about overall rate
         else:
             tob_event = event_from_tob(my_tree, tob)
-            
-            # Cut on TOB eta
-            #if abs(tob.eta()) > eta_cut:
-            #    continue
 
             # Only consider those that pass Run3 seed cut
             if not isCentralTowerSeed(tob_event):
